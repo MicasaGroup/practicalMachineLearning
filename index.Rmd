@@ -1,0 +1,87 @@
+---
+title       : Practical Machine Learning 
+output: html_document
+---
+### Goal of assignment
+Using data from the Weight Lifting Exercise Dataset (provided by Human Activity Recognition), develop a prediction model to predict the manner in which an exercise is performed.
+
+### Deciding the predictors
+```{r echo=FALSE, cache=TRUE, message=FALSE}
+## download data and set up libaries and function
+library(caret)
+propmiss <- function(dataframe) {
+  m <- sapply(dataframe, function(x) {
+    data.frame(
+      nmiss=sum(is.na(x)), 
+      n=length(x), 
+      propmiss=sum(is.na(x))/length(x)
+    )
+  })
+  d <- data.frame(t(m))
+  d <- sapply(d, unlist)
+  d <- as.data.frame(d)
+  d$variable <- row.names(d)
+  row.names(d) <- NULL
+  d <- cbind(d[ncol(d)],d[-ncol(d)])
+  return(d[order(d$propmiss), ])
+}
+
+fileUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileUrl, "pml-training.csv",method="curl")
+pmltraining <- read.csv("pml-training.csv",na.strings=c("","NA"))
+```
+The test data provided has the following has the following dimensions:
+```{r echo=FALSE}
+dim(pmltraining)
+```
+Columns that do not contain values are removed from the data set and a potential set of predictors were identified.  A review of data set write up indicate 7 additional columns that are unlikely to be used as predictors.
+```{r echo=FALSE}
+candidatecols <- propmiss(pmltraining)
+candidatecols <- candidatecols[candidatecols$propmiss <= 0.9,]
+potentialPredictors <- pmltraining[,candidatecols$variable]
+potentialPredictors <- pmltraining[,candidatecols$variable]
+potentialPredictors$X <- NULL
+potentialPredictors$user_name <- NULL
+potentialPredictors$raw_timestamp_part_1 <- NULL
+potentialPredictors$raw_timestamp_part_2 <- NULL
+potentialPredictors$cvtd_timestamp <- NULL
+potentialPredictors$new_window <- NULL
+potentialPredictors$num_window <- NULL
+dim(potentialPredictors)
+```
+
+## Training and test data sets
+The data is then split into two data sets: training and test. The algorithm will be trained on the training data and then tested against the test set.  The test set will only be used once to evaluate the prediction algorithm.
+```{r}
+library(caret)
+## create data partitions
+trainIndex <- createDataPartition(potentialPredictors$classe, p=0.8, list=FALSE)
+data_train <- potentialPredictors[trainIndex,]
+data_test <- potentialPredictors[-trainIndex,]
+```
+The training data has `r dim(data_train)[1]` observations and the testing data set has `r dim(data_test)[1]` observations.
+
+## Random Forest
+The random forest algorithm is chosen for its accuracy and its ability to handle thousands of input variables.  In random forests, there is no need to perform additional cross-validation or a separate test set to get an unbiased estimate of the test set error.  By very nature of its design, it is estimated internally and each tree is constructed using a different bootstrap sample from the training data set.
+```{r cache=TRUE}
+library("randomForest")
+model.rf <-  randomForest(classe~.,data=data_train,importance=TRUE)
+```
+
+To validate the model, we run the model against the test set:
+```{r }
+library("randomForest")
+## predict against the test data
+predict.test <- predict(model.rf,data_test)
+## check accuracy using the confusion Matrix
+cm<-confusionMatrix(predict.test,data_test$classe)
+cm
+```
+
+The prediction algorithm is shown to have an accuracy of
+```{r echo=FALSE}
+cm$overall['Accuracy']
+```
+
+The model is applied against the course test cases and submitted online.  All predicted values are correct. 
+
